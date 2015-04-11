@@ -3,12 +3,11 @@
 # test - all somfy commands for blinds without timings set
 # test - receiver functionality with somfyR
 #
-# issue - state is at halt at end of stop move timer 
 # issue - position is above 200 in a case
 # issue - is numeric state really ok ?
 #
 ### Open ??? - if timer is running and last command equals new command (only for open / close) - considered minor
-
+### Open ??? - adapt documentation (where needed)
 
 ######################################################
 # $Id: 10_SOMFY.pm 7988 2015-02-14 22:04:45Z thomyd $
