@@ -168,7 +168,9 @@ sub SOMFY_InternalSet($@) {
 		return "SOMFY_set: Unknown argument $cmd, choose one of " . join(" ", @cList);
 	} # error unknown cmd handling
 
-	my $arg1 = $args[1];
+	my $arg1 = "";
+	$arg1 = $args[1];
+	
 	return "SOMFY_set: Bad time spec" if($cmd =~m/(on|off)-for-timer/ && $numberOfArgs == 2 && $arg1 !~ m/^\d*\.?\d+$/);
 
 	# read timing variables
@@ -274,7 +276,7 @@ sub SOMFY_InternalSet($@) {
 				$updateState = 200;
 			} elsif ( $posRounded < 100 ) {
 				#		elseif pos < 100 - set timer for remaining time to 100+time-to-close  --> update timer( newState 200)
-				my $remTime = $t1down100 * ( $pos / 100 );
+				my $remTime = $t1down100 * ( (100 - $pos) / 100 );
 				$updatetime = ( $t1downclose - $t1down100 ) + $remTime;
 				$updateState = 200;
 			} else {
@@ -371,7 +373,9 @@ sub SOMFY_InternalSet($@) {
 	### start timer 
 	if ( $mode eq 'virtual' ) {
 		# in virtual mode define drivetime as updatetime only, so no commands will be send
-		$updatetime = $drivetime;
+		if ( $updatetime == 0 ) {
+			$updatetime = $drivetime;
+		}
 		$drivetime = 0;
 	} 
 	
