@@ -269,7 +269,7 @@ sub SOMFY_SendCommand($@)
 	my $name = $hash->{NAME};
 	my $numberOfArgs  = int(@args);
 
-	Log3($name,1,"SOMFY_sendCommand: $name -> cmd :$cmd: ");
+	Log3($name,4,"SOMFY_sendCommand: $name -> cmd :$cmd: ");
 
   # custom control needs 2 digit hex code
   return "Bad custom control code, use 2 digit hex codes only" if($args[0] eq "z_custom"
@@ -351,11 +351,11 @@ sub SOMFY_SendCommand($@)
 	  . uc( $hash->{ADDRESS} );
 
 	## Log that we are going to switch Somfy
-	Log GetLogLevel( $name, 2 ), "SOMFY set $value: $message";
+	Log GetLogLevel( $name, 4 ), "SOMFY set $value: $message";
 	( undef, $value ) = split( " ", $value, 2 );    # Not interested in the name...
 
 	## Send Message to IODev using IOWrite
-	Log3($name,1,"SOMFY_sendCommand: $name -> message :$message: ");
+	Log3($name,5,"SOMFY_sendCommand: $name -> message :$message: ");
 	IOWrite( $hash, "Y", $message );
 
 	# increment encryption key and rolling code
@@ -368,8 +368,6 @@ sub SOMFY_SendCommand($@)
 	# update the readings, but do not generate an event
 	setReadingsVal($hash, "enc_key", $new_enc_key, $timestamp);
 	setReadingsVal($hash, "rolling_code", $new_rolling_code, $timestamp);
-
-	return $ret;		# ???????????????
 
 	## Do we need to change symbol length back?
 	if (   defined( $attr{ $name } )
@@ -583,7 +581,9 @@ sub SOMFY_InternalSet($@) {
 	} # error unknown cmd handling
 
 	my $arg1 = "";
-	$arg1 = $args[1];
+	if ( $numberOfArgs >= 2 ) {
+		$arg1 = $args[1];
+	}
 	
 	return "SOMFY_set: Bad time spec" if($cmd =~m/(on|off)-for-timer/ && $numberOfArgs == 2 && $arg1 !~ m/^\d*\.?\d+$/);
 
@@ -622,7 +622,7 @@ sub SOMFY_InternalSet($@) {
 	}
 
 
-	Log3($name,3,"SOMFY_set: $name -> entering with mode :$mode: cmd :$cmd:  arg1 :$arg1:  pos :$pos: ");
+	Log3($name,4,"SOMFY_set: $name -> entering with mode :$mode: cmd :$cmd:  arg1 :$arg1:  pos :$pos: ");
 
 	# check timer running - stop timer if running and update detail pos
 	# recognize timer running if internal updateState is still set
@@ -632,7 +632,6 @@ sub SOMFY_InternalSet($@) {
 		
 		$pos = SOMFY_CalcCurrentPos( $hash, $hash->{move}, $pos, SOMFY_UpdateStartTime($hash) );
 		delete $hash->{updateState};
-#		$hash->{updateState} = undef;
 	}
 
 	################ No error returns after this point to avoid stopped timer causing confusion...
@@ -658,14 +657,22 @@ sub SOMFY_InternalSet($@) {
 			$move = 'on';
 			$newState = 'middle';
 			$drivetime = $arg1;
-			$updateState = 'middle';
+			if ( $drivetime == 0 ) {
+				$move = 'stop';
+			} else {
+				$updateState = 'middle';
+			}
 
 		} elsif($cmd eq 'off-for-timer') {
 			# elsif cmd == off-for-timer - time x
 			$move = 'off';
 			$newState = 'middle';
 			$drivetime = $arg1;
-			$updateState = 'middle';
+			if ( $drivetime == 0 ) {
+				$move = 'stop';
+			} else {
+				$updateState = 'middle';
+			}
 
 		} elsif($cmd =~m/stop|go_my/) { 
 			$move = 'stop';
@@ -732,7 +739,11 @@ sub SOMFY_InternalSet($@) {
 				$move = 'off';
 				my $remTime = ( $t1upopen - $t1up100 ) * ( ( $pos - $arg1) / 100 );
 				$drivetime = $remTime;
-				$updateState = $arg1;
+				if ( $drivetime == 0 ) {
+					$move = 'stop';
+				} else {
+					$updateState = $arg1;
+				}
 			} elsif ( $pos > 100 ) {
 				#		else if pos > 100 - set timer for remaining time to 100+time for 100-x / cmd open --> halt timer ( newState x )
 				$move = 'off';
@@ -758,20 +769,33 @@ sub SOMFY_InternalSet($@) {
 			#		calcPos at new time y / cmd close --> halt timer ( newState y )
 			$move = 'off';
 			$drivetime = $arg1;
-			$updateState = 	SOMFY_CalcCurrentPos( $hash, $move, $pos, $arg1 );
+			if ( $drivetime == 0 ) {
+				$move = 'stop';
+			} else {
+				$updateState = 	SOMFY_CalcCurrentPos( $hash, $move, $pos, $arg1 );
+			}
 
 		} elsif($cmd eq 'on-for-timer') {
 			#		calcPos at new time y / cmd open --> halt timer ( newState y )
 			$move = 'on';
 			$drivetime = $arg1;
-			$updateState = SOMFY_CalcCurrentPos( $hash, $move, $pos, $arg1 );
+			if ( $drivetime == 0 ) {
+				$move = 'stop';
+			} else {
+				$updateState = SOMFY_CalcCurrentPos( $hash, $move, $pos, $arg1 );
+			}
 
 		}			
-		Log3($name,3,"SOMFY_set: $name -> handled command $cmd");
-			
 	}
 	
 	### update hash / readings
+	Log3($name,5,"SOMFY_set: handled command $cmd --> move :$move:  newState :$newState: ");
+	if ( defined($updateState)) {
+		Log3($name,5,"SOMFY_set: handled for drive/udpate:  updateState :$updateState:  drivet :$drivetime: updatet :$updatetime: ");
+	} else {
+		Log3($name,5,"SOMFY_set: handled for drive/udpate:  updateState ::  drivet :$drivetime: updatet :$updatetime: ");
+	}
+			
 	SOMFY_UpdateState( $hash, $newState, $move, $updateState );
 	
 	### send command
@@ -795,12 +819,12 @@ sub SOMFY_InternalSet($@) {
 	
 	if($drivetime > 0) {
 		# timer fuer stop starten
-		Log3($name,3,"SOMFY_set: $name -> stopping in $drivetime sec");
+		Log3($name,4,"SOMFY_set: $name -> stopping in $drivetime sec");
 		InternalTimer(gettimeofday()+$drivetime,"SOMFY_StopAfterMoving",$hash,0);
 
 	} elsif($updatetime > 0) {
 		# timer fuer Update state starten
-		Log3($name,3,"SOMFY_set: $name -> state update in $updatetime sec");
+		Log3($name,4,"SOMFY_set: $name -> state update in $updatetime sec");
 		InternalTimer(gettimeofday()+$updatetime,"SOMFY_UpdateAfterMoving",$hash,0);
 	}
 
@@ -845,6 +869,8 @@ sub SOMFY_UpdateStartTime($) {
 sub SOMFY_StopAfterMoving($) {
 	my ($hash) = @_;
 
+	Log3($hash->{NAME},4,"SOMFY_StopAfterMoving");
+
 	SOMFY_SendCommand($hash,'stop');
 
 	SOMFY_UpdateAfterMoving($hash)
@@ -854,6 +880,8 @@ sub SOMFY_StopAfterMoving($) {
 sub SOMFY_UpdateAfterMoving($) {
 	my ($hash) = @_;
 	
+	Log3($hash->{NAME},4,"SOMFY_UpdateAfterMoving: updateState :$hash->{updateState}: ");
+
 	SOMFY_UpdateState( $hash, $hash->{updateState}, 'stop', undef );
 	delete $hash->{starttime};
 
